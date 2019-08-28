@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 )
 
 type Data struct {
@@ -26,14 +27,18 @@ func sayhelloName(w http.ResponseWriter, r *http.Request) {
 	// 	fmt.Println("key:", k)
 	// 	fmt.Println("val:", strings.Join(v, ""))
 	// }
-	url := "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"
-	resp, _ := http.Get(url) // _下划线表示申明一个只写变量
-	s := Employee{}
-	body, _ := ioutil.ReadAll(resp.Body)
-	resp.Body.Close()
-	json.Unmarshal([]byte(body), &s)
-	fmt.Println(fmt.Sprintf("%+v", s))
-	fmt.Fprintf(w, "Hello Wrold!,LYQQQQQQ") //这个写入到w的是输出到客户端的
+	ticker := time.NewTicker(60000 * time.Second)
+	for _ = range ticker.C {
+
+		url := "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"
+		resp, _ := http.Get(url) // _下划线表示申明一个只写变量
+		s := Employee{}
+		body, _ := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		json.Unmarshal([]byte(body), &s)
+		fmt.Println(fmt.Sprintf("%+v", s))
+		fmt.Fprintf(w, "Hello Wrold!,LYQQQQQQ") //这个写入到w的是输出到客户端的
+	}
 }
 func main() {
 	http.HandleFunc("/", sayhelloName)                //设置访问的路由
