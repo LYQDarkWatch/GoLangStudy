@@ -1,0 +1,25 @@
+#
+# BUILD 阶段
+# 
+FROM golang:1.11.5 AS build
+
+# 设置我们应用程序的工作目录
+WORKDIR /gowork/src/goweb/
+
+# 添加所有需要编译的应用代码
+ADD . .
+
+# 编译一个静态的go应用（在二进制构建中包含C语言依赖库）
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOARM=6 go build -ldflags '-w -s' -o server
+
+# 设置我们应用程序的启动命令
+ENTRYPOINT ["./server"]
+
+# 生产阶段
+ 
+FROM scratch AS prod
+ 
+# 从buil阶段拷贝二进制文件
+COPY --from=build /gowork/src/goweb/ .
+
+ENTRYPOINT ["./server"]

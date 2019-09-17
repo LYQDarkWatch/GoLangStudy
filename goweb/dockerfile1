@@ -1,0 +1,14 @@
+# Go语言环境基础镜像
+#FROM golang:1.11.5
+
+# 将源码拷贝到镜像中
+COPY main.go /build/
+
+# 指定工作目录
+WORKDIR /build
+
+# 编译镜像时，运行 go build 编译生成 server 程序
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOARM=6 go build -ldflags '-w -s' -o server
+
+# 指定容器运行时入口程序 server
+ENTRYPOINT ["/build/server"]
