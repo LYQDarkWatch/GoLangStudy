@@ -6,8 +6,22 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
 )
 
+type jwtCustomClaims struct {
+	jwt.StandardClaims
+
+	// 追加自己需要的信息
+	Uid   uint `json:"uid"`
+	Admin bool `json:"admin"`
+}
+
+type Token struct {
+	Token string `json:"token"`
+}
 type MyMux struct {
 }
 type Auth struct {
@@ -20,6 +34,20 @@ type Resp struct {
 }
 
 var github = map[string]string{}
+
+func CreateToken(SecretKey []byte, issuer string, Uid uint, isAdmin bool) (tokenString string, err error) {
+	claims := &jwtCustomClaims{
+		jwt.StandardClaims{
+			ExpiresAt: int64(time.Now().Add(time.Hour * 72).Unix()),
+			Issuer:    issuer,
+		},
+		Uid,
+		isAdmin,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err = token.SignedString(SecretKey)
+	return
+}
 
 func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/about" {
@@ -35,7 +63,7 @@ func (p *MyMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-func about(w http.ResponseWriter, r *http.Request) string {
+func about(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("content-type", "application/json")
@@ -44,36 +72,35 @@ func about(w http.ResponseWriter, r *http.Request) string {
 	a, _ := ioutil.ReadAll(body.Body)
 	b := string(a)
 	github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"] = b
-	fmt.Println(github)
 	fmt.Fprint(w, github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"])
-	return b
 }
 func Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("content-type", "application/json")
 	if r.Method == "POST" {
+		var user Auth
 		s, _ := ioutil.ReadAll(r.Body)
-		a := string(s)
-		login(s)
-		fmt.Print(a)
-	}
-}
-func login(userInfo []byte) {
-	var user Auth
-	var result Resp
-	json.Unmarshal(userInfo, &user)
-	if user.Username == "admin" && user.Pwd == "123456" {
-		result.Code = "200"
-		result.Msg = "登录成功"
-		fmt.Print(result.Msg)
-	} else {
-		result.Code = "401"
-		result.Msg = "账户名或密码错误"
-		fmt.Print(result.Msg)
+		json.Unmarshal([]byte(s), &user)
+		if user.Username == "admin" && user.Pwd == "123456" {
+			keyInfo := "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()"
+			var dataStr = string(s)
+			data := jwt.StandardClaims{Subject: dataStr, ExpiresAt: time.Now().Unix() - 1000}
+			tokenInfo := jwt.NewWithClaims(jwt.SigningMethodHS256, data)
+			tokenStr, _ := tokenInfo.SignedString([]byte(keyInfo))
+			fmt.Println("myToken is: ", tokenStr)
+			tokenInfo, _ = jwt.Parse(tokenStr, func(token *jwt.Token) (i interface{}, e error) {
+				return keyInfo, nil
+			})
+
+			fmt.Fprintf(w, `{"code":200}`)
+			fmt.Println("欢迎用户: " + user.Username + " 登录成功")
+		} else {
+			fmt.Fprintf(w, `{"code":401}`)
+			fmt.Println("账号或密码错误")
+		}
 
 	}
-
 }
 func Start() {
 	mux := &MyMux{}
@@ -83,10 +110,10 @@ func Start() {
 	}
 }
 func ClearMap(w http.ResponseWriter, r *http.Request) {
-
 	delete(github, "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc")
 	fmt.Fprint(w, github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"])
 }
 func main() {
+
 	Start()
 }
