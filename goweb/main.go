@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/garyburd/redigo/redis"
+	"gopkg.in/redis.v4"
 )
 
 const (
@@ -73,10 +73,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		claims["userName"] = user.Username
 		claims["password"] = user.Password
 		token.Claims = claims
-
 		fmt.Println(claims)
-
 		tokenString, _ := token.SignedString([]byte(SecretKey))
+
+		set(tokenString, user.Username, 6000)
 		fmt.Println(tokenString)
 		response := Token{tokenString}
 		JsonResponse(response, w)
@@ -103,7 +103,7 @@ var github = map[string]string{}
 
 func about(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
+	// w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("content-type", "application/json")
 	url := "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"
 	body, _ := http.Get(url)
@@ -117,35 +117,30 @@ func ClearMap(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"])
 }
 
-const (
-	RedisURL            = "redis://*****:6379"
-	redisMaxIdle        = 3   //最大空闲连接数
-	redisIdleTimeoutSec = 240 //最大空闲连接时间
-	RedisPassword       = "*****"
-)
+var Client *redis.Client
 
-// NewRedisPool 返回redis连接池
-func NewRedisPool(redisURL string) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     redisMaxIdle,
-		IdleTimeout: redisIdleTimeoutSec * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.DialURL(redisURL)
-			if err != nil {
-				return nil, fmt.Errorf("redis connection error: %s", err)
-			}
-			//验证redis密码
-			if _, authErr := c.Do("AUTH", RedisPassword); authErr != nil {
-				return nil, fmt.Errorf("redis auth password error: %s", authErr)
-			}
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			if err != nil {
-				return fmt.Errorf("ping redis error: %s", err)
-			}
-			return nil
-		},
+func init() {
+	Client = redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:6379",
+		PoolSize:     1000,
+		ReadTimeout:  time.Millisecond * time.Duration(100),
+		WriteTimeout: time.Millisecond * time.Duration(100),
+		IdleTimeout:  time.Second * time.Duration(10),
+	})
+	_, err := Client.Ping().Result()
+	if err != nil {
+		panic("init redis error")
+	} else {
+		fmt.Println("init redis ok")
 	}
+}
+func get(key string) (string, bool) {
+	r, err := Client.Get(key).Result()
+	if err != nil {
+		return "", false
+	}
+	return r, true
+}
+func set(key string, val string, expTime int32) {
+	Client.Set(key, val, time.Duration(expTime)*time.Second)
 }
