@@ -50,11 +50,12 @@ func main() {
 	StartServer()
 }
 
+var user UserCredentials
+
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
 	// var u *User = new(User)
-	var user UserCredentials
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
@@ -76,7 +77,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(claims)
 		tokenString, _ := token.SignedString([]byte(SecretKey))
 
-		set(tokenString, user.Username, 6000)
+		set(user.Username, tokenString, 6000)
 		fmt.Println(tokenString)
 		response := Token{tokenString}
 		JsonResponse(response, w)
@@ -104,13 +105,29 @@ var github = map[string]string{}
 func about(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	// w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Headers", "*,Authorization")
 	w.Header().Set("content-type", "application/json")
-	url := "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"
-	body, _ := http.Get(url)
-	a, _ := ioutil.ReadAll(body.Body)
-	b := string(a)
-	github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"] = b
-	fmt.Fprint(w, github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"])
+	w.Header().Set("Access-Control-Request-Headers", "authorization")
+	autoken := r.Header.Get("Authorization")
+	fmt.Println(autoken)
+	fmt.Println(user.Username)
+	if autoken == get(user.Username) {
+		url := "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"
+		body, _ := http.Get(url)
+		a, _ := ioutil.ReadAll(body.Body)
+		b := string(a)
+		github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"] = b
+		fmt.Fprint(w, github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"])
+	} else {
+		fmt.Fprint(w, `{"code":400}`)
+	}
+
+	// url := "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"
+	// body, _ := http.Get(url)
+	// a, _ := ioutil.ReadAll(body.Body)
+	// b := string(a)
+	// github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"] = b
+	// fmt.Fprint(w, github["https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc"])
 }
 func ClearMap(w http.ResponseWriter, r *http.Request) {
 	delete(github, "https://api.github.com/search/repositories?q=stars:%3E=500&sort=stars&order=desc")
@@ -134,12 +151,18 @@ func init() {
 		fmt.Println("init redis ok")
 	}
 }
-func get(key string) (string, bool) {
-	r, err := Client.Get(key).Result()
-	if err != nil {
-		return "", false
-	}
-	return r, true
+
+// func get(key string) (string, bool) {
+// 	// r, err := Client.Get(key).Result()
+// 	// if err != nil {
+// 	// 	return "", false
+// 	// }
+// 	// return r, true
+// }
+func get(key string) string {
+	r, _ := Client.Get(key).Result()
+	return r
+
 }
 func set(key string, val string, expTime int32) {
 	Client.Set(key, val, time.Duration(expTime)*time.Second)
